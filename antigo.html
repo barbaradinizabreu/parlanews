@@ -290,7 +290,7 @@
         <p class="help">Digite o nome de qualquer parlamentar ou use os exemplos. Suporta operadores AND, OR e NOT.</p>
 
         <label for="query">Consulta</label>
-        <input id="query" type="text" value="Erika Hilton" placeholder="Ex.: Erika Hilton AND educação" />
+        <input id="query" type="text" value="" placeholder="Ex.: Erika Hilton AND educação" />
 
         <div class="chip-area">
           <button class="chip" data-query="Erika Hilton">Erika Hilton</button>
@@ -304,18 +304,13 @@
             <label for="cargo">Cargo</label>
             <select id="cargo">
               <option value="">Todos</option>
-              <option value="Deputada Federal">Deputada Federal</option>
-              <option value="Senadora">Senadora</option>
+              <option value="Deputado Federal">Deputado Federal</option>
+              <option value="Senador">Senador</option>
             </select>
           </div>
           <div>
             <label for="partido">Partido</label>
-            <select id="partido">
-              <option value="">Todos</option>
-              <option value="PSOL">PSOL</option>
-              <option value="PT">PT</option>
-              <option value="MDB">MDB</option>
-            </select>
+            <input type="text" id="partido" placeholder="Ex: PSOL, PT, MDB…">
           </div>
         </div>
 
@@ -324,9 +319,33 @@
             <label for="estado">Estado</label>
             <select id="estado">
               <option value="">Todos</option>
-              <option value="SP">SP</option>
-              <option value="MG">MG</option>
+              <option value="AC">AC</option>
+              <option value="AL">AL</option>
+              <option value="AP">AP</option>
+              <option value="AM">AM</option>
               <option value="BA">BA</option>
+              <option value="CE">CE</option>
+              <option value="DF">DF</option>
+              <option value="ES">ES</option>
+              <option value="GO">GO</option>
+              <option value="MA">MA</option>
+              <option value="MT">MT</option>
+              <option value="MS">MS</option>
+              <option value="MG">MG</option>
+              <option value="PA">PA</option>
+              <option value="PB">PB</option>
+              <option value="PR">PR</option>
+              <option value="PE">PE</option>
+              <option value="PI">PI</option>
+              <option value="RJ">RJ</option>
+              <option value="RN">RN</option>
+              <option value="RS">RS</option>
+              <option value="RO">RO</option>
+              <option value="RR">RR</option>
+              <option value="SC">SC</option>
+              <option value="SP">SP</option>
+              <option value="SE">SE</option>
+              <option value="TO">TO</option>
             </select>
           </div>
           <div>
@@ -402,6 +421,7 @@
     const $ = id => document.getElementById(id);
 
     let perfilAtual = null;
+    let dadosCarregados = [];
 
     function normalizar(texto) {
       return (texto || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
@@ -437,13 +457,30 @@
       el.style.color = tipo === 'erro' ? '#b42318' : tipo === 'ok' ? '#1f8a70' : '#7b8794';
     }
 
+    function aplicarFiltros() {
+      let dados = aplicarBooleano([...dadosCarregados], $('query').value);
+      ['cargo', 'estado', 'tema', 'fonte'].forEach(campo => {
+        const valor = $(campo).value;
+        if (valor) dados = dados.filter(item => item[campo] === valor);
+      });
+      const valorPartido = $('partido').value.trim().toUpperCase();
+      if (valorPartido) dados = dados.filter(item => item.partido.toUpperCase().includes(valorPartido));
+
+      const ordem = $('ordenacao').value;
+      dados.sort((a, b) => {
+        if (ordem === 'antigo')    return new Date(a.data) - new Date(b.data);
+        if (ordem === 'relevancia') return b.relevancia - a.relevancia;
+        return new Date(b.data) - new Date(a.data);
+      });
+
+      renderizar(dados);
+    }
+
     // ── Pesquisa principal — sempre consome as APIs reais ──────────────────
     async function pesquisar() {
       $('buscar').disabled = true;
       perfilAtual = null;
       setStatus('Consultando APIs (Câmara dos Deputados, Senado Federal, GNews, NewsAPI)…');
-
-      let dados;
 
       try {
         const r = await ParlaNewsAPI.carregarNoticias($('query').value, {
@@ -453,15 +490,14 @@
         perfilAtual = r.parlamentar;
 
         if (r.resultados.length) {
-          dados = r.resultados;
+          dadosCarregados = r.resultados;
           const fontes = [...new Set(r.resultados.map(n => n.fonte))].join(', ');
           setStatus(
             `${r.resultados.length} resultado(s) recuperado(s) para ${r.parlamentar.nome} — fontes: ${fontes}.`,
             'ok'
           );
         } else {
-          // APIs de notícias não retornaram resultados (chaves não configuradas)
-          dados = [...noticiasSimuladas];
+          dadosCarregados = [...noticiasSimuladas];
           const faltam = [];
           if (!ParlaNewsAPI.CONFIG.GNEWS_APIKEY)  faltam.push('GNews');
           if (!ParlaNewsAPI.CONFIG.NEWSAPI_KEY)   faltam.push('NewsAPI');
@@ -474,26 +510,13 @@
           );
         }
       } catch (e) {
-        dados = [...noticiasSimuladas];
+        dadosCarregados = [...noticiasSimuladas];
         setStatus('Falha ao consultar as APIs: ' + e.message + '. Exibindo dados simulados.', 'erro');
       } finally {
         $('buscar').disabled = false;
       }
 
-      dados = aplicarBooleano(dados, $('query').value);
-      ['cargo', 'partido', 'estado', 'tema', 'fonte'].forEach(campo => {
-        const valor = $(campo).value;
-        if (valor) dados = dados.filter(item => item[campo] === valor);
-      });
-
-      const ordem = $('ordenacao').value;
-      dados.sort((a, b) => {
-        if (ordem === 'antigo')    return new Date(a.data) - new Date(b.data);
-        if (ordem === 'relevancia') return b.relevancia - a.relevancia;
-        return new Date(b.data) - new Date(a.data);
-      });
-
-      renderizar(dados);
+      aplicarFiltros();
     }
 
     function formatarData(data) {
@@ -565,9 +588,10 @@
       $('ordenacao').value = 'recente';
       pesquisar();
     });
-    ['cargo', 'partido', 'estado', 'tema', 'fonte', 'ordenacao'].forEach(id =>
-      $(id).addEventListener('change', pesquisar)
+    ['cargo', 'estado', 'tema', 'fonte', 'ordenacao'].forEach(id =>
+      $(id).addEventListener('change', aplicarFiltros)
     );
+    $('partido').addEventListener('input', aplicarFiltros);
     $('query').addEventListener('keydown', e => { if (e.key === 'Enter') pesquisar(); });
 
     pesquisar();
